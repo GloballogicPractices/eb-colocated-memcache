@@ -42,6 +42,8 @@ EXPOSE 11211
 EXPOSE 11212
 ```
 
+The docker-entrypoint that spawns mcrouter in background. 
+
 ```bash
 #!/bin/sh
 MEMCACHE_PORT=11211
@@ -57,7 +59,7 @@ exec "$@"
 
 ### ElasticBeanstalk environment
 
-
+With ElasticBeanstalk there is a possibility to create environment specific resources with .ebextensions. In this case we create a cache cluster which will be used as an upstream for the local memcache. The McRouter configuration sits on EFS so it's shared across the instances. If an Instance is added the configuration is regenerated. McRouter has a config file monitoring in place so each change will trigger the reconfiguration, so instances are aweare of each other.
 
 ```yaml
 Resources:
@@ -182,6 +184,12 @@ Resources:
           OptionName: VpcId
 ```
 
+We let the each instance regenerate the config for the router. The configuration of the mcrouter itself is straight forward. Three types of routes are used.
+* get - we query the co-located memcache, if it has no record we contact the central cache as a warm up
+* delete - we send the query to all members
+* set - se set the query to all mmebers
+
+
 ```yaml
 files:
   /usr/local/bin/genmcrouter.sh:
@@ -257,6 +265,8 @@ files:
 #    command: ln -s /usr/local/bin/genmcrouter.sh /opt/elasticbeanstalk/hooks/appdeploy/post/99_genmcrouter.sh
 ```
 
+Prior running the McRouter image we need a shared efs for the configuration. This mounts the egs and restarts docker daemon + ecs otherwise the freshly mounted volumes won't be available inside of the docker.
+
 ```
 packages:
   yum:
@@ -302,7 +312,7 @@ commands:
 
 ### Application
 
-This is an example of an application using a colocated memcache on ElasticBeanstalk Multi container docker platform.
+This is an example of an application using a colocated memcache on ElasticBeanstalk Multi container docker platform. In this example we use haproxy to queue up the connections to backend ( RDS ) so we don't ddos the database. 
 
 ```
 {
